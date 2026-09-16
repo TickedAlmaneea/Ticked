@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'constants/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/live_activity_service.dart';
 
 void main() async {
   await dotenv.load();
@@ -12,6 +13,10 @@ void main() async {
     url: dotenv.get("SUPABASE_URL"),
     publishableKey: dotenv.get("SUPABASE_PUBLISHABLE_KEY"),
   );
+
+  // Safe to call before the widget extension exists in Xcode — it just
+  // means Live Activities silently never appear until it does.
+  await LiveActivityService.instance.init();
 
   runApp(const MainApp());
 }

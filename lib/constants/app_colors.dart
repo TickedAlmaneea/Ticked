@@ -31,6 +31,12 @@ abstract final class AppColors {
   /// oklch(28% .016 50) — hairline dividers and unfilled track backgrounds.
   static const Color divider = Color(0xFF302722);
 
+  /// rgba(255,255,255,.07) — a hairline drawn on top of a photograph or a
+  /// gradient, where [divider] (an opaque warm grey) would read as a hard
+  /// seam instead of a soft one. The ticket-stub Profile screen's list rows
+  /// use this; card-on-[bg] dividers elsewhere keep using [divider].
+  static const Color hairline = Color(0x12FFFFFF);
+
   /// oklch(25% .075 25) — atmosphere only, never UI.
   ///
   /// Deep cinema-curtain red. Use it for a full-bleed gradient wash behind the
@@ -38,6 +44,12 @@ abstract final class AppColors {
   /// text, never as a border — it does not meet contrast against anything and
   /// it is not meant to.
   static const Color velvet = Color(0xFF3E0F0E);
+
+  /// oklch(19% .035 35) — the far end of the recap band's gradient on the
+  /// ticket-stub Profile screen: [surface] fading toward this, a hint of
+  /// [velvet] as atmosphere behind the year's numbers. Never a flat fill on
+  /// its own.
+  static const Color recapGradientEnd = Color(0xFF2A1A17);
 
   // ---------------------------------------------------------------------------
   // Accent — the lit screen
@@ -113,6 +125,12 @@ abstract final class AppColors {
 
   /// The playhead marking the current minute during a live session.
   static const Color timelinePlayhead = textPrimary;
+
+  /// oklch(40% .02 60) — perforation dashes and dotted leaders on the
+  /// ticket-stub Profile screen. Same shade as [timelineFilm]; kept as its
+  /// own name because the two mean different things — a cut line and a
+  /// leader rule, not a span of film.
+  static const Color dash = Color(0xFF5A4D44);
 
   // ---------------------------------------------------------------------------
   // Status

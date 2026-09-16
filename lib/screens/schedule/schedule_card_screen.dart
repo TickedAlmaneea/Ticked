@@ -11,6 +11,7 @@ import '../../models/cinema.dart';
 import '../../models/film.dart';
 import '../../models/film_break.dart';
 import '../../models/schedule.dart';
+import '../../services/live_activity_service.dart';
 import '../../utils/date_format.dart';
 import '../../widgets/segmented_timeline.dart';
 import '../../widgets/ticked_button.dart';
@@ -97,6 +98,7 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    LiveActivityService.instance.end();
     super.dispose();
   }
 
@@ -299,15 +301,18 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
       _liveStartedAt = DateTime.now();
       _phase = _Phase.live;
     });
+    unawaited(LiveActivityService.instance.start(schedule));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {});
+      unawaited(LiveActivityService.instance.onTick(schedule, _elapsedMinutes));
       if (_elapsedMinutes >= schedule.totalMinutes) _endSession();
     });
   }
 
   void _endSession() {
     _ticker?.cancel();
+    unawaited(LiveActivityService.instance.end());
     if (mounted) setState(() => _phase = _Phase.ended);
   }
 
@@ -375,6 +380,7 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
     );
     if (leave == true && mounted) {
       _ticker?.cancel();
+      unawaited(LiveActivityService.instance.end());
       Navigator.of(context).pop();
     }
   }

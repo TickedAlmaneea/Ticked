@@ -4,14 +4,16 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../models/yearly_recap.dart';
 import '../utils/date_format.dart';
+import 'shimmer_bar.dart';
 import 'stat_tile.dart';
 
-/// The single "how much have I watched" summary on Profile — films,
-/// cinemas, and time at the cinema for the year, plus the ad-minutes
-/// headline. This used to sit alongside a second, separate FILMS
-/// WATCHED / CINEMAS VISITED tile row further up the page; that row
-/// was just this same data said twice, so it's gone and this card is
-/// now the only place those numbers live.
+/// The bottom band of the ticket-stub Profile card — "how much have I
+/// watched" for the year: films, cinemas, time at the cinema, and the
+/// ad-minutes headline. It sits directly under the card's perforation,
+/// inside the same clipped stub as the identity band above it, so it only
+/// owns its own background (a hint of [AppColors.velvet] fading in from
+/// [AppColors.surface]) rather than a card shape of its own — that used to
+/// be a separate bordered, rounded card floating below the profile header.
 class RecapCard extends StatelessWidget {
   const RecapCard({super.key, required this.recap});
 
@@ -21,44 +23,43 @@ class RecapCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final recap = this.recap;
-    if (recap == null) {
-      return const SizedBox(
-        height: 90,
-        child: Center(child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2)),
-      );
-    }
 
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.divider),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.surface, AppColors.velvet],
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.surface, AppColors.recapGradientEnd],
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${recap.year} RECAP', style: AppTypography.overline),
-          const SizedBox(height: 6),
           Text(
-            recap.totalAdMinutes == 0
-                ? 'No screenings recorded yet this year.'
-                : 'You have watched ${recap.totalAdHours.toStringAsFixed(1)} hours of advertisements this year.',
-            style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700),
+            '${recap?.year ?? DateTime.now().year} RECAP',
+            style: AppTypography.mono(size: 9.5, weight: FontWeight.w600, letterSpacing: 1.71, color: AppColors.gold),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              StatTile(value: '${recap.filmsWatched}', label: 'FILMS'),
-              const SizedBox(width: 10),
-              StatTile(value: '${recap.cinemasVisited}', label: 'CINEMAS'),
-              const SizedBox(width: 10),
-              StatTile(value: formatMinutes(recap.totalWatchMinutes), label: 'TIME AT THE CINEMA'),
-            ],
+          const SizedBox(height: 10),
+          if (recap == null)
+            const ShimmerBar(width: 230, height: 14)
+          else
+            Text(
+              recap.totalAdMinutes == 0
+                  ? 'Check in to your first screening and your recap starts here.'
+                  : 'You have watched ${recap.totalAdHours.toStringAsFixed(1)} hours of advertisements this year.',
+              style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w400),
+            ),
+          const SizedBox(height: 20),
+          StatTile(value: recap == null ? null : '${recap.filmsWatched}', label: 'FILMS'),
+          const SizedBox(height: 12),
+          StatTile(value: recap == null ? null : '${recap.cinemasVisited}', label: 'CINEMAS'),
+          const SizedBox(height: 12),
+          StatTile(
+            value: recap == null ? null : formatMinutes(recap.totalWatchMinutes),
+            label: 'AT THE CINEMA',
+            valueColor: AppColors.gold,
           ),
         ],
       ),

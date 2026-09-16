@@ -44,6 +44,24 @@ abstract final class AppTypography {
     color: AppColors.textSecondary,
   );
 
+  /// A Bebas Neue headline at an arbitrary size — the ticket-stub Profile
+  /// screen's cardholder name (46) and numbered list labels (28) sit
+  /// between [displayLarge] and [displayMedium] rather than matching
+  /// either one, so they get this instead of a fourth named constant.
+  static TextStyle display({
+    required double size,
+    double height = 1.0,
+    double letterSpacing = 0.5,
+    Color color = AppColors.textPrimary,
+  }) {
+    return GoogleFonts.bebasNeue(
+      fontSize: size,
+      height: height,
+      letterSpacing: letterSpacing,
+      color: color,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Timer — JetBrains Mono
   // ---------------------------------------------------------------------------
@@ -77,6 +95,27 @@ abstract final class AppTypography {
     color: AppColors.textTertiary,
     fontFeatures: const [FontFeature.tabularFigures()],
   );
+
+  /// A JetBrains Mono caption or stat value at an arbitrary size — the
+  /// ticket-stub Profile screen needs several sizes this family has no
+  /// named style for (its serial number, "ADMIT ONE", the recap label, the
+  /// stat values). Kept here, not hard-coded in a widget, so every mono
+  /// caption on that screen still comes from one place.
+  static TextStyle mono({
+    required double size,
+    FontWeight weight = FontWeight.w400,
+    double letterSpacing = 0,
+    Color color = AppColors.textTertiary,
+    double height = 1.0,
+  }) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: size,
+      fontWeight: weight,
+      letterSpacing: letterSpacing,
+      color: color,
+      height: height,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Body — Manrope
