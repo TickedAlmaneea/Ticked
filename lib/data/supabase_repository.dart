@@ -220,7 +220,12 @@ class SupabaseRepository implements TickedRepository {
     // addNewBreaks replaces rather than appends, so a re-ask that now
     // has an answer cleanly overwrites the empty one.
     await _db.addNewBreaks(film.movieId, answer.breaks);
-    await _db.markBreaksChecked(film.movieId, answer.creditsStartMin, answer.creditSceneStartMin);
+    await _db.markBreaksChecked(
+      film.movieId,
+      answer.creditsStartMin,
+      answer.creditSceneStartMin,
+      answer.creditSceneEndMin,
+    );
 
     return answer.breaks;
   }

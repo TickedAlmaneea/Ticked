@@ -8,11 +8,26 @@ import '../../models/film.dart';
 import '../../models/upcoming_showtime.dart';
 import '../../services/database.dart';
 import '../../utils/date_format.dart';
-import '../../widgets/film_poster_card.dart';
+import '../../widgets/now_showing_carousel.dart';
+import '../../widgets/section_header.dart';
 import '../../widgets/ticked_button.dart';
 import '../../widgets/vignette_backdrop.dart';
 import '../schedule/schedule_card_screen.dart';
 import '../ticket/upload_ticket_screen.dart';
+
+/// Which chain a `films.source` token displays as — the inverse of
+/// [SupabaseRepository]'s own map. Needed because [nowShowing] mixes all
+/// five chains together: [ScheduleCardScreen] wants the cinema's display
+/// name rather than its source token, and the carousel's caption names
+/// the chain under the centred poster. Top-level so both the screen and
+/// the carousel read it from one place.
+const Map<String, String> cinemaNameBySource = {
+  'vox': 'VOX',
+  'muvi': 'Muvi',
+  'reel': 'Reel',
+  'cinehouse': 'CINEHOUSE',
+  'scene': 'Scene',
+};
 
 /// Proposal screen 5 — "Upload your ticket" as the primary action, a
 /// "starting soon" list of the very next showings, and a "now showing"
@@ -61,24 +76,12 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadTicketScreen()));
   }
 
-  /// Which chain a `films.source` token displays as — the inverse of
-  /// [SupabaseRepository]'s own map, needed here because [nowShowing]
-  /// mixes all five chains together and [ScheduleCardScreen] wants the
-  /// cinema's display name, not its source token.
-  static const Map<String, String> _cinemaNameBySource = {
-    'vox': 'VOX',
-    'muvi': 'Muvi',
-    'reel': 'Reel',
-    'cinehouse': 'CINEHOUSE',
-    'scene': 'Scene',
-  };
-
   Future<void> _openFilm(Film film) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ScheduleCardScreen(
           preselectedFilm: film,
-          preselectedCinemaName: _cinemaNameBySource[film.source],
+          preselectedCinemaName: cinemaNameBySource[film.source],
         ),
       ),
     );
@@ -141,13 +144,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 22),
                 _UploadTicketCard(onTap: _openUploadTicket),
-                const SizedBox(height: 30),
-                Text('NOW SHOWING', style: AppTypography.overline),
-                const SizedBox(height: 12),
+                const SizedBox(height: 34),
+                const SectionHeader(label: 'NOW SHOWING'),
+                const SizedBox(height: 18),
                 _NowShowingSection(nowShowingFuture: _nowShowing, onOpenFilm: _openFilm),
-                const SizedBox(height: 30),
-                Text('STARTING SOON', style: AppTypography.overline),
-                const SizedBox(height: 12),
+                const SizedBox(height: 34),
+                const SectionHeader(label: 'STARTING SOON'),
+                const SizedBox(height: 14),
                 _StartingSoonSection(startingSoonFuture: _startingSoon, onOpenShowtime: _openStartingSoon),
               ],
             ),
@@ -245,6 +248,11 @@ class _NowShowingSection extends StatelessWidget {
   /// without turning Home into the full Cinemas tab.
   static const int _maxShown = 20;
 
+  /// What the loading and empty states stand in at — the poster strip
+  /// plus its caption and dots, so the page doesn't reflow when the
+  /// carousel replaces them.
+  static const double _placeholderHeight = 420;
+
   /// Since each chain caches its own copy of a film (there is no
   /// shared `movies` table any more — see film.dart's own doc comment),
   /// the same title showing at three chains is three separate rows
@@ -307,41 +315,37 @@ class _NowShowingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same 252 as the Cinemas tab's own FilmPosterCard row (132-wide
-    // poster at 2:3 is 198 tall, plus the title and duration lines
-    // under it — anything shorter clips them).
-    return SizedBox(
-      height: 252,
-      child: FutureBuilder<List<Film>>(
-        future: nowShowingFuture,
-        builder: (context, snapshot) {
-          final films = snapshot.data;
-          if (films == null) {
-            return const Center(
+    return FutureBuilder<List<Film>>(
+      future: nowShowingFuture,
+      builder: (context, snapshot) {
+        final films = snapshot.data;
+
+        // The loading and empty states reserve roughly the poster strip's
+        // own height, so the sections below don't jump up the page and
+        // then back down once the posters arrive.
+        if (films == null) {
+          return const SizedBox(
+            height: _placeholderHeight,
+            child: Center(
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold),
-            );
-          }
-
-          final showable = _dedupedByTitle(
-            films.where((film) => film.hasKnownDuration).toList(),
-          ).take(_maxShown).toList();
-          if (showable.isEmpty) {
-            return Center(
-              child: Text('Nothing scraped yet — check back soon.', style: AppTypography.bodyMedium),
-            );
-          }
-
-          return ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: showable.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
-            itemBuilder: (context, i) => FilmPosterCard(
-              film: showable[i],
-              onTap: () => onOpenFilm(showable[i]),
             ),
           );
-        },
-      ),
+        }
+
+        final showable = _dedupedByTitle(
+          films.where((film) => film.hasKnownDuration).toList(),
+        ).take(_maxShown).toList();
+        if (showable.isEmpty) {
+          return SizedBox(
+            height: _placeholderHeight,
+            child: Center(
+              child: Text('Nothing scraped yet — check back soon.', style: AppTypography.bodyMedium),
+            ),
+          );
+        }
+
+        return NowShowingCarousel(films: showable, onOpenFilm: onOpenFilm);
+      },
     );
   }
 }

@@ -22,6 +22,7 @@ class Film {
     this.posterUrl,
     this.creditsStartMin,
     this.creditSceneStartMin,
+    this.creditSceneEndMin,
     this.breaksCheckedAt,
   });
 
@@ -47,6 +48,7 @@ class Film {
       posterUrl: json["poster_url"],
       creditsStartMin: json["credits_start_min"],
       creditSceneStartMin: json["credit_scene_start_min"],
+      creditSceneEndMin: json["credit_scene_end_min"],
       breaksCheckedAt: checkedAt == null ? null : DateTime.parse(checkedAt).toLocal(),
     );
   }
@@ -85,13 +87,29 @@ class Film {
   /// Read it through [hasCreditScene] rather than comparing by hand.
   final int? creditSceneStartMin;
 
+  /// When that scene ends — the credits then carry on to [durationMin].
+  ///
+  /// Carries the same three states as [creditSceneStartMin], and a film
+  /// with no scene has BOTH pinned to [durationMin]:
+  ///
+  ///   null              never asked.
+  ///   == durationMin    asked; no scene (or a scene running to the
+  ///                     final frame).
+  ///   <  durationMin    the scene stops there and credits resume.
+  final int? creditSceneEndMin;
+
   final DateTime? breaksCheckedAt;
 
   /// Used to attach Gemini's credits answer to the cached row before
   /// writing it back — Gemini is only ever asked for the credits/break
   /// timing, never for title/duration/poster, so those three pass
   /// through untouched here.
-  Film copyWith({int? creditsStartMin, int? creditSceneStartMin, DateTime? breaksCheckedAt}) {
+  Film copyWith({
+    int? creditsStartMin,
+    int? creditSceneStartMin,
+    int? creditSceneEndMin,
+    DateTime? breaksCheckedAt,
+  }) {
     return Film(
       filmId: filmId,
       movieId: movieId,
@@ -102,6 +120,7 @@ class Film {
       posterUrl: posterUrl,
       creditsStartMin: creditsStartMin ?? this.creditsStartMin,
       creditSceneStartMin: creditSceneStartMin ?? this.creditSceneStartMin,
+      creditSceneEndMin: creditSceneEndMin ?? this.creditSceneEndMin,
       breaksCheckedAt: breaksCheckedAt ?? this.breaksCheckedAt,
     );
   }
@@ -168,7 +187,19 @@ class Film {
   /// for a film never opened since. Those are re-asked once; after that
   /// the column holds either a real minute or the "no scene" sentinel,
   /// so a film without a credits scene is never re-asked on its account.
-  bool get creditSceneChecked => creditSceneStartMin != null;
+  bool get creditSceneChecked {
+    if (creditSceneStartMin == null) return false;
+    // Having a scene's start but not its end is a half-answer: rows
+    // written before `credit_scene_end_min` existed carry exactly that,
+    // and without this they would keep their start forever and never
+    // learn where the scene actually stops. Those are re-asked once.
+    //
+    // Only films that HAVE a scene need an end, which is why this hangs
+    // off [hasCreditScene] — the "asked, no scene" sentinel has nothing
+    // to bound and must not be re-asked on its account.
+    if (hasCreditScene && creditSceneEndMin == null) return false;
+    return true;
+  }
 
   /// True only when this film really has a scene in or after its credits.
   /// The sentinel (== [durationMin]) is "asked, none", not a scene at the
@@ -176,6 +207,19 @@ class Film {
   bool get hasCreditScene {
     final start = creditSceneStartMin;
     return start != null && start < durationMin;
+  }
+
+  /// Where the credits scene's span stops. Falls back to the end of the
+  /// film when no end minute is known (rows written before
+  /// `credit_scene_end_min` existed), which is how the scene was drawn
+  /// before it did. Also guards against an end that isn't after the
+  /// start, or runs past the runtime — either would draw a backwards or
+  /// overflowing span.
+  int get creditSceneEndOr {
+    final start = creditSceneStartMin;
+    final end = creditSceneEndMin;
+    if (start == null || end == null || end <= start) return durationMin;
+    return end > durationMin ? durationMin : end;
   }
 
   /// False when the source site had no runtime listed yet (VOX leaves

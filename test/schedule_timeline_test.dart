@@ -12,13 +12,14 @@ import 'package:final_project/models/timeline_segment.dart';
 void main() {
   const branch = Branch(id: 1, cinemaName: 'Reel', branchName: 'Granada Mall');
 
-  Film film({int? creditsStartMin, int? creditSceneStartMin}) => Film(
+  Film film({int? creditsStartMin, int? creditSceneStartMin, int? creditSceneEndMin}) => Film(
         filmId: 1,
         movieId: 1,
         title: 'Test Film',
         durationMin: 120,
         creditsStartMin: creditsStartMin,
         creditSceneStartMin: creditSceneStartMin,
+        creditSceneEndMin: creditSceneEndMin,
       );
 
   Schedule scheduleFor(Film f) => Schedule(
@@ -80,6 +81,92 @@ void main() {
     ).buildTimeline();
 
     expect(of(segments, TimelineSegmentKind.credits), isEmpty);
+  });
+
+  test('a bounded scene leaves credits showing on both sides of it', () {
+    // credits 112 -> 120, scene 114 -> 116. The grey credits span runs
+    // the whole tail and the scene paints over only its own stretch, so
+    // there is credits time visible before AND after it.
+    final segments = scheduleFor(
+      film(creditsStartMin: 112, creditSceneStartMin: 114, creditSceneEndMin: 116),
+    ).buildTimeline();
+
+    final credits = of(segments, TimelineSegmentKind.credits).single;
+    final scene = of(segments, TimelineSegmentKind.creditScene).single;
+
+    expect(credits.startMin, 122);
+    expect(credits.endMin, 130);
+    expect(scene.startMin, 124);
+    expect(scene.endMin, 126);
+
+    expect(scene.startMin, greaterThan(credits.startMin), reason: 'credits before the scene');
+    expect(scene.endMin, lessThan(credits.endMin), reason: 'credits after the scene');
+  });
+
+  test('credits grey covers the whole credits run, red only over the scene', () {
+    // Credits take the last 15 minutes (105 -> 120) with a scene at
+    // 110 -> 112 inside them. The grey must span all 15 minutes; the red
+    // must cover only the scene, leaving grey either side.
+    final segments = scheduleFor(
+      film(creditsStartMin: 105, creditSceneStartMin: 110, creditSceneEndMin: 112),
+    ).buildTimeline();
+
+    final credits = of(segments, TimelineSegmentKind.credits).single;
+    final scene = of(segments, TimelineSegmentKind.creditScene).single;
+
+    // Grey: the full 15-minute credits run (offset by the 10-min ads).
+    expect(credits.startMin, 115);
+    expect(credits.endMin, 130);
+    expect(credits.lengthMin, 15);
+
+    // Red: only the 2-minute scene, sitting inside the grey.
+    expect(scene.startMin, 120);
+    expect(scene.endMin, 122);
+    expect(scene.lengthMin, 2);
+
+    // 5 minutes of grey before the scene, 8 minutes after.
+    expect(scene.startMin - credits.startMin, 5);
+    expect(credits.endMin - scene.endMin, 8);
+  });
+
+  test('both minutes at the runtime means no scene, so nothing red is drawn', () {
+    final segments = scheduleFor(
+      film(creditsStartMin: 105, creditSceneStartMin: 120, creditSceneEndMin: 120),
+    ).buildTimeline();
+
+    expect(of(segments, TimelineSegmentKind.credits).single.lengthMin, 15);
+    expect(of(segments, TimelineSegmentKind.creditScene), isEmpty);
+  });
+
+  test('a scene with no end falls back to running to the end of the film', () {
+    final segments = scheduleFor(
+      film(creditsStartMin: 112, creditSceneStartMin: 116),
+    ).buildTimeline();
+
+    expect(of(segments, TimelineSegmentKind.creditScene).single.endMin, 130);
+  });
+
+  test('a backwards or overlong scene end is rejected, not drawn', () {
+    // End at or before the start would paint a backwards span.
+    expect(film(creditSceneStartMin: 116, creditSceneEndMin: 116).creditSceneEndOr, 120);
+    expect(film(creditSceneStartMin: 116, creditSceneEndMin: 110).creditSceneEndOr, 120);
+    // Past the runtime would overflow the bar.
+    expect(film(creditSceneStartMin: 116, creditSceneEndMin: 200).creditSceneEndOr, 120);
+    // A sane window survives intact.
+    expect(film(creditSceneStartMin: 114, creditSceneEndMin: 116).creditSceneEndOr, 116);
+  });
+
+  test('a scene with a start but no end is treated as not yet answered', () {
+    // The half-answered state: rows written before credit_scene_end_min
+    // existed. These must go back to Gemini once to learn their end.
+    expect(film(creditSceneStartMin: 114, creditSceneEndMin: null).creditSceneChecked, isFalse);
+
+    // Once the end is known, it is answered and never re-asked.
+    expect(film(creditSceneStartMin: 114, creditSceneEndMin: 116).creditSceneChecked, isTrue);
+
+    // A film with NO scene has nothing to bound — a null end is complete,
+    // and it must not be dragged back to Gemini on its account.
+    expect(film(creditSceneStartMin: 120, creditSceneEndMin: null).creditSceneChecked, isTrue);
   });
 
   test('hasCreditScene reads the three states correctly', () {

@@ -52,6 +52,7 @@ class BreaksAnswer {
   const BreaksAnswer({
     required this.creditsStartMin,
     required this.creditSceneStartMin,
+    required this.creditSceneEndMin,
     required this.breaks,
     this.isEstimate = false,
   });
@@ -64,6 +65,13 @@ class BreaksAnswer {
   /// coming out of [GeminiApi.readAnswer], since having asked at all is
   /// what separates "no scene" (the sentinel) from "not asked" (null).
   final int? creditSceneStartMin;
+
+  /// When that scene ends. Carries the same sentinel as
+  /// [creditSceneStartMin]: a film with no scene has BOTH pinned to the
+  /// runtime. Never null coming out of [GeminiApi.readAnswer] — null
+  /// means "never asked", and a film that has been asked is answered
+  /// either way.
+  final int? creditSceneEndMin;
 
   final List<FilmBreak> breaks;
 
@@ -85,6 +93,13 @@ class GeminiApi {
   /// Two at most. More than that crowds the timeline, and nobody steps
   /// out of one film three times.
   static const int maxBreaks = 2;
+
+  /// How long a mid/post-credits scene is assumed to run when Gemini
+  /// says a film has one but won't say where it ends. Two minutes is the
+  /// usual length of the form. Used rather than stretching the scene to
+  /// the runtime, which would wrongly paint every remaining minute of
+  /// credits as "stay in your seat".
+  static const int typicalCreditSceneMinutes = 2;
 
   /// [year] is optional because nothing in the app knows it any more:
   /// `films` is scraped from a cinema's listings, which print a runtime
@@ -298,6 +313,7 @@ class GeminiApi {
         "{\"estimated\": <true or false>, \"has_credits_scene\": <true or false>, "
         "\"credits_start_min\": <integer or null>, "
         "\"credit_scene_start_min\": <integer or null>, "
+        "\"credit_scene_end_min\": <integer or null>, "
         "\"breaks\": [{\"start_min\": <integer>, \"end_min\": <integer>, "
         "\"scene\": <string or null>}]}\n"
         "\n"
@@ -318,6 +334,13 @@ class GeminiApi {
         "\"credits_start_min\" and less than $durationMin. A mid-credits "
         "scene sits shortly after the credits begin; a post-credits scene "
         "sits at the very end.\n"
+        "- \"credit_scene_end_min\" is the minute that scene finishes and the "
+        "ordinary credits resume. Give it only when \"has_credits_scene\" is "
+        "true, otherwise null. It must be greater than "
+        "\"credit_scene_start_min\" and no more than $durationMin. These "
+        "scenes are short — usually one to three minutes — so do not stretch "
+        "it to the end of the film unless the scene really does run into the "
+        "final frame.\n"
         "- Each break is a stretch where nothing plot-critical happens: no "
         "dialogue that matters later, no reveal, no major action beat.\n"
         "- Breaks must be at least $minBreakMinutes minutes long, must not "
@@ -359,6 +382,7 @@ class GeminiApi {
     final unreadable = BreaksAnswer(
       creditsStartMin: null,
       creditSceneStartMin: durationMin,
+      creditSceneEndMin: durationMin,
       breaks: const [],
     );
 
@@ -421,12 +445,55 @@ class GeminiApi {
       creditSceneStart = durationMin;
     }
 
+    // Only meaningful when there actually is a scene to bound.
+    //
+    // When there is one, this is never left null. A null end means "not
+    // answered yet" to Film.creditSceneChecked, so returning one for a
+    // model that simply declined to give an end would send that film
+    // back to Gemini on every single open — a quota leak on exactly the
+    // films people watch most. Falling back to a typical scene length
+    // both fills the column and draws the honest shape: a short scene
+    // with the credits resuming after it.
+    final int creditSceneEnd;
+    if (creditSceneStart < durationMin) {
+      final read = readSceneEnd(jsonBody["credit_scene_end_min"], creditSceneStart, durationMin);
+      final assumed = creditSceneStart + typicalCreditSceneMinutes;
+      creditSceneEnd = read ?? (assumed > durationMin ? durationMin : assumed);
+    } else {
+      // No scene: both minutes are pinned to the runtime, matching
+      // creditSceneStartMin's own "asked, no scene" sentinel. Never null
+      // — null means "never asked", and leaving it there would send
+      // every film without a scene back to Gemini on each open.
+      creditSceneEnd = durationMin;
+    }
+
     return BreaksAnswer(
       creditsStartMin: creditsStart,
       creditSceneStartMin: creditSceneStart,
+      creditSceneEndMin: creditSceneEnd,
       breaks: readBreaks(jsonBody["breaks"], durationMin, isEstimate: isEstimate),
       isEstimate: isEstimate,
     );
+  }
+
+  /// The minute a credits scene finishes. Deliberately not [readCredits]:
+  /// that one rejects the runtime itself, which is right for a *start*
+  /// (a scene beginning on the last frame is nonsense) but wrong here —
+  /// a post-credits scene legitimately runs to the final frame.
+  ///
+  /// Returns null rather than a clamped guess when the model gives an end
+  /// at or before the start, since a backwards span says nothing useful;
+  /// the caller falls back to the end of the film.
+  int? readSceneEnd(dynamic value, int startMin, int durationMin) {
+    if (value is! num) {
+      return null;
+    }
+
+    final minute = value.round();
+    if (minute <= startMin) {
+      return null;
+    }
+    return minute > durationMin ? durationMin : minute;
   }
 
   int? readCredits(dynamic value, int durationMin) {

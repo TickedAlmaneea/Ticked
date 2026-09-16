@@ -82,12 +82,21 @@ class Schedule {
     // span it sits inside (see SegmentedTimeline's overlay order).
     // [Film.hasCreditScene] rejects the "asked, no scene" sentinel, so
     // this only ever appears on a film that really has one.
+    //
+    // The scene is bounded rather than running to the end of the film,
+    // because that is how a cinema actually plays it:
+    //
+    //     ...film... | credits | SCENE | credits | end
+    //
+    // Since the credits span above already covers the whole tail and
+    // this paints over only its own stretch, the grey shows on BOTH
+    // sides of the scene without needing a second credits segment.
     if (film.hasCreditScene) {
       segments.add(
         TimelineSegment(
           kind: TimelineSegmentKind.creditScene,
           startMin: adMinutes + film.creditSceneStartMin!,
-          endMin: adMinutes + film.durationMin,
+          endMin: adMinutes + film.creditSceneEndOr,
         ),
       );
     }

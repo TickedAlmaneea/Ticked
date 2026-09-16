@@ -373,10 +373,16 @@ class Database {
   ///
   /// Written to `films` directly — there is no separate `movies` table
   /// any more, so each chain's listing of a title stamps its own row.
-  Future<void> markBreaksChecked(int movieId, int? creditsStartMin, int? creditSceneStartMin) async {
+  Future<void> markBreaksChecked(
+    int movieId,
+    int? creditsStartMin,
+    int? creditSceneStartMin,
+    int? creditSceneEndMin,
+  ) async {
     await supabase.from("films").update({
       "credits_start_min": creditsStartMin,
       "credit_scene_start_min": creditSceneStartMin,
+      "credit_scene_end_min": creditSceneEndMin,
       "breaks_checked_at": DateTime.now().toUtc().toIso8601String(),
     }).eq("film_id", movieId);
   }
