@@ -40,6 +40,21 @@ class CinemasScreen extends StatefulWidget {
 }
 
 class _CinemasScreenState extends State<CinemasScreen> {
+  /// Display order for the chain rows on this screen, top to bottom.
+  /// Anything not listed here (a new chain not yet accounted for)
+  /// sorts after all of these rather than disappearing.
+  static const List<String> _chainOrder = ['VOX', 'Reel', 'Muvi', 'CINEHOUSE', 'Scene'];
+
+  List<Cinema> _ordered(List<Cinema> cinemas) {
+    final sorted = List<Cinema>.of(cinemas);
+    sorted.sort((a, b) {
+      final ai = _chainOrder.indexOf(a.name);
+      final bi = _chainOrder.indexOf(b.name);
+      return (ai == -1 ? _chainOrder.length : ai).compareTo(bi == -1 ? _chainOrder.length : bi);
+    });
+    return sorted;
+  }
+
   late Future<List<Cinema>> _cinemas;
 
   /// Per-chain, so one chain's slow load never blanks the others.
@@ -136,7 +151,7 @@ class _CinemasScreenState extends State<CinemasScreen> {
                         child: Center(child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2)),
                       )
                     else
-                      for (final cinema in cinemas)
+                      for (final cinema in _ordered(cinemas))
                         _CinemaRow(
                           key: _sectionKeys.putIfAbsent(cinema.name, GlobalKey.new),
                           cinema: cinema,
