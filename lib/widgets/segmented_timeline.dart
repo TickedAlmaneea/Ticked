@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../models/timeline_segment.dart';
 
-/// F4 — the segmented timeline: ad block, film, safe breaks and
-/// credits as distinct coloured spans. Ads and film exactly tile the
-/// full width (0..adMinutes, adMinutes..total), so they're drawn as a
-/// simple two-flex base row; breaks and credits are drawn *on top* of
-/// that base at their fractional position, matching the order
+/// F4 — the segmented timeline: ad block, film, safe breaks, credits
+/// and a credits scene as distinct coloured spans. Ads and film exactly
+/// tile the full width (0..adMinutes, adMinutes..total), so they're
+/// drawn as a simple two-flex base row; everything else is drawn *on
+/// top* of that base at its fractional position, matching the order
 /// [Schedule.buildTimeline] documents ("in the order they're drawn").
 /// An optional playhead marks elapsed time during a live session.
 ///
@@ -39,6 +39,8 @@ class SegmentedTimeline extends StatelessWidget {
         return AppColors.timelineBreak;
       case TimelineSegmentKind.credits:
         return AppColors.timelineCredits;
+      case TimelineSegmentKind.creditScene:
+        return AppColors.timelineCreditScene;
     }
   }
 
@@ -56,8 +58,12 @@ class SegmentedTimeline extends StatelessWidget {
     final base = segments
         .where((s) => s.kind == TimelineSegmentKind.ads || s.kind == TimelineSegmentKind.film)
         .toList();
+    // Everything that isn't part of the tiling base is an overlay, kept
+    // in the order Schedule.buildTimeline emitted it — which is what puts
+    // a credits scene on top of the credits span it sits inside, rather
+    // than under it.
     final overlays = segments
-        .where((s) => s.kind == TimelineSegmentKind.safeBreak || s.kind == TimelineSegmentKind.credits)
+        .where((s) => s.kind != TimelineSegmentKind.ads && s.kind != TimelineSegmentKind.film)
         .toList();
 
     return ClipRRect(

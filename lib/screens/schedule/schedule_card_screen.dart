@@ -129,6 +129,9 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
   /// [keepFilm] keeps a preselected film when it really is one of this
   /// cinema's listings (opened from the Cinemas tab or a ticket photo).
   /// [keepBranchId] does the same for a branch read off a ticket.
+  ///
+  /// Failing both, a cinema with a single branch has that branch selected
+  /// outright — see below.
   Future<void> _onCinemaChanged(String? name, {bool keepFilm = false, int? keepBranchId}) async {
     if (name == null) return;
     final previousFilm = _film;
@@ -152,10 +155,22 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
     // The dropdown needs the very instance from its own items, so look
     // the branch up in this list rather than keep one passed in.
     final keptBranch = branches.where((b) => b.id == keepBranchId).firstOrNull;
+
+    // A dropdown with exactly one option isn't a choice, so make it.
+    //
+    // This lives here rather than at the call sites because most of them
+    // *cannot* pass a branch: a film on its own — a poster tapped on Home
+    // or in the Cinemas tab — plays at every branch of its chain, so
+    // there is no single branch to hand over. Only the paths that open a
+    // specific showing (Starting Soon) or read one off a ticket (the OCR
+    // scan) know one, and those already pass `keepBranchId`. Resolving it
+    // here covers every other path at once, including any added later.
+    final branch = keptBranch ?? (branches.length == 1 ? branches.single : null);
+
     setState(() {
       _branchOptions = branches;
       _filmOptions = films;
-      _branch = keptBranch;
+      _branch = branch;
       _film = keptFilm;
       _loadingOptions = false;
     });
@@ -633,6 +648,10 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
         dot(AppColors.timelineFilm, 'Film'),
         dot(AppColors.timelineBreak, 'Safe break'),
         dot(AppColors.timelineCredits, 'Credits'),
+        // Only listed when this film actually has one — a legend entry
+        // for a colour that isn't on the bar reads as "there's a scene"
+        // to someone skimming, which is the exact thing it must not say.
+        if (_film?.hasCreditScene ?? false) dot(AppColors.timelineCreditScene, 'Scene after credits'),
       ],
     );
   }

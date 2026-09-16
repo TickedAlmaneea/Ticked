@@ -6,7 +6,10 @@ plugins {
 
 android {
     namespace = "com.example.final_project"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned to 37 rather than flutter.compileSdkVersion (36): the
+    // permission_handler_android plugin requires callers to compile
+    // against API 37 or later.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

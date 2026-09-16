@@ -37,8 +37,9 @@ class Schedule {
   /// full width of the segmented timeline.
   int get totalMinutes => adMinutes + film.durationMin;
 
-  /// The ad block, the film body, any safe breaks, and credits (when
-  /// known) as coloured spans, in the order they're drawn.
+  /// The ad block, the film body, any safe breaks, the credits (when
+  /// known) and a credits scene (when the film has one) as coloured
+  /// spans, in the order they're drawn.
   List<TimelineSegment> buildTimeline() {
     final segments = <TimelineSegment>[
       TimelineSegment(kind: TimelineSegmentKind.ads, startMin: 0, endMin: adMinutes),
@@ -62,12 +63,30 @@ class Schedule {
     // Credits starting at the runtime means "not known" — the film is
     // treated as running to its end, and there is no credits span to
     // draw. Only a real, earlier credits minute gets a segment.
+    //
+    // This is drawn for every film whose credits minute is known, whether
+    // or not it has a scene: on its own the grey span says "the film is
+    // over here, you can go", which is worth knowing by itself.
     final creditsStart = film.creditsStartMin;
     if (creditsStart != null && creditsStart < film.durationMin) {
       segments.add(
         TimelineSegment(
           kind: TimelineSegmentKind.credits,
           startMin: adMinutes + creditsStart,
+          endMin: adMinutes + film.durationMin,
+        ),
+      );
+    }
+
+    // ...and the scene on top of it, last, so it paints over the credits
+    // span it sits inside (see SegmentedTimeline's overlay order).
+    // [Film.hasCreditScene] rejects the "asked, no scene" sentinel, so
+    // this only ever appears on a film that really has one.
+    if (film.hasCreditScene) {
+      segments.add(
+        TimelineSegment(
+          kind: TimelineSegmentKind.creditScene,
+          startMin: adMinutes + film.creditSceneStartMin!,
           endMin: adMinutes + film.durationMin,
         ),
       );

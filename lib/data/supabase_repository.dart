@@ -168,7 +168,15 @@ class SupabaseRepository implements TickedRepository {
   Future<List<FilmBreak>> breaksForFilm(int filmId) async {
     final film = await filmDetails(filmId);
 
-    if (film.breaksAreCached) {
+    // `creditSceneChecked` joins `breaksAreCached` as a condition of the
+    // cache being complete. A row written before `credit_scene_start_min`
+    // existed is stamped but has nothing in that column, and would
+    // otherwise never learn whether its film has a credits scene — the
+    // stamp alone would keep it away from Gemini forever. Letting those
+    // fall through re-asks each such film exactly once, on the next open;
+    // the answer then fills the column (with a real minute or the "no
+    // scene" sentinel) and it is never re-asked on this account again.
+    if (film.breaksAreCached && film.creditSceneChecked) {
       // Keyed on the movie: every cinema listing it shares one answer.
       final cached = await _db.getBreaks(film.movieId);
 
@@ -212,7 +220,7 @@ class SupabaseRepository implements TickedRepository {
     // addNewBreaks replaces rather than appends, so a re-ask that now
     // has an answer cleanly overwrites the empty one.
     await _db.addNewBreaks(film.movieId, answer.breaks);
-    await _db.markBreaksChecked(film.movieId, answer.creditsStartMin);
+    await _db.markBreaksChecked(film.movieId, answer.creditsStartMin, answer.creditSceneStartMin);
 
     return answer.breaks;
   }

@@ -97,8 +97,9 @@ abstract final class AppColors {
   // Timeline segments
   // ---------------------------------------------------------------------------
   //
-  // The segmented timeline (F4) draws four spans: ad block, film, safe breaks
-  // and credits. Every one has to read against the dark card behind it AND
+  // The segmented timeline (F4) draws five spans: ad block, film, safe breaks,
+  // credits, and a credits scene. Every one has to read against the dark card
+  // behind it AND
   // against the span next to it — the first version separated them by value
   // alone (film was surface2, credits was divider), and on a #150D09 card
   // those were effectively invisible.
@@ -106,8 +107,9 @@ abstract final class AppColors {
   // So: gold for the ads, because they are what the project measured; a warm
   // mid-grey for the film, clearly visible but quiet; a soft sage green for
   // the breaks, the one extra hue, because "safe to step out" is the thing a
-  // person is scanning for; and a lighter grey for credits so it separates
-  // from the film it sits on the end of.
+  // person is scanning for; a lighter grey for credits so it separates
+  // from the film it sits on the end of; and a terracotta for a credits
+  // scene, the second extra hue, sitting on top of that grey.
 
   /// The advertising block — the measured span, drawn in the accent.
   static const Color timelineAds = gold;
@@ -120,8 +122,18 @@ abstract final class AppColors {
   static const Color timelineBreak = Color(0xFF7FB77E);
 
   /// Closing credits — lighter than the film so the end of the film reads.
-  /// Only drawn when a real credits minute is known.
+  /// Only drawn when a real credits minute is known. Deliberately quiet:
+  /// this span means "the film is over, you can go", so it must never
+  /// compete with [timelineCreditScene] sitting on top of it.
   static const Color timelineCredits = Color(0xFFA2958B);
+
+  /// A mid/post-credits scene — the one span that means "do NOT leave".
+  /// Terracotta, chosen as the opposite pole to [timelineBreak]'s sage:
+  /// the two hues that aren't gold now read as the two opposite
+  /// instructions (green "safe to step out", red-orange "stay in your
+  /// seat"), which is the distinction someone is scanning the bar for.
+  /// Warm enough to belong beside the gold rather than alarm against it.
+  static const Color timelineCreditScene = Color(0xFFE07A5F);
 
   /// The playhead marking the current minute during a live session.
   static const Color timelinePlayhead = textPrimary;

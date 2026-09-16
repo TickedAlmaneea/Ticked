@@ -96,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => ScheduleCardScreen(
           preselectedFilm: film,
           preselectedCinemaName: showtime.cinemaName,
+          preselectedBranchId: showtime.branchId,
           initialTicketTime: showtime.time,
         ),
       ),

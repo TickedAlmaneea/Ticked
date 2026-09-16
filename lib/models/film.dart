@@ -21,6 +21,7 @@ class Film {
     this.sourceSlug,
     this.posterUrl,
     this.creditsStartMin,
+    this.creditSceneStartMin,
     this.breaksCheckedAt,
   });
 
@@ -45,6 +46,7 @@ class Film {
       sourceSlug: json["source_slug"],
       posterUrl: json["poster_url"],
       creditsStartMin: json["credits_start_min"],
+      creditSceneStartMin: json["credit_scene_start_min"],
       breaksCheckedAt: checkedAt == null ? null : DateTime.parse(checkedAt).toLocal(),
     );
   }
@@ -67,14 +69,29 @@ class Film {
   final String? source;
   final String? sourceSlug;
   final String? posterUrl;
+  /// When the end credits begin. Informational — "the film is over, you
+  /// can go". Null when unknown.
   final int? creditsStartMin;
+
+  /// When the mid/post-credits scene plays — the one worth staying for.
+  /// Three states, deliberately, the same shape [breaksCheckedAt] uses
+  /// (see scripts/add_credit_scene_to_films.sql):
+  ///
+  ///   null              never asked — [creditSceneChecked] is false and
+  ///                     the film is re-asked next time it is opened.
+  ///   == durationMin    asked; this film has no credits scene.
+  ///   <  durationMin    asked; the scene is at that minute.
+  ///
+  /// Read it through [hasCreditScene] rather than comparing by hand.
+  final int? creditSceneStartMin;
+
   final DateTime? breaksCheckedAt;
 
   /// Used to attach Gemini's credits answer to the cached row before
   /// writing it back — Gemini is only ever asked for the credits/break
   /// timing, never for title/duration/poster, so those three pass
   /// through untouched here.
-  Film copyWith({int? creditsStartMin, DateTime? breaksCheckedAt}) {
+  Film copyWith({int? creditsStartMin, int? creditSceneStartMin, DateTime? breaksCheckedAt}) {
     return Film(
       filmId: filmId,
       movieId: movieId,
@@ -84,6 +101,7 @@ class Film {
       sourceSlug: sourceSlug,
       posterUrl: posterUrl,
       creditsStartMin: creditsStartMin ?? this.creditsStartMin,
+      creditSceneStartMin: creditSceneStartMin ?? this.creditSceneStartMin,
       breaksCheckedAt: breaksCheckedAt ?? this.breaksCheckedAt,
     );
   }
@@ -145,6 +163,20 @@ class Film {
   int get hashCode => filmId.hashCode;
 
   bool get breaksAreCached => breaksCheckedAt != null;
+
+  /// False for a row written before `credit_scene_start_min` existed, or
+  /// for a film never opened since. Those are re-asked once; after that
+  /// the column holds either a real minute or the "no scene" sentinel,
+  /// so a film without a credits scene is never re-asked on its account.
+  bool get creditSceneChecked => creditSceneStartMin != null;
+
+  /// True only when this film really has a scene in or after its credits.
+  /// The sentinel (== [durationMin]) is "asked, none", not a scene at the
+  /// last minute — hence the strict `<`.
+  bool get hasCreditScene {
+    final start = creditSceneStartMin;
+    return start != null && start < durationMin;
+  }
 
   /// False when the source site had no runtime listed yet (VOX leaves
   /// this off for titles that haven't opened) — a schedule cannot be

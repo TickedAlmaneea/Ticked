@@ -358,7 +358,13 @@ class Database {
   }
 
   /// Stamps this film's listing as checked once Gemini has answered for
-  /// it, and stores the credits minute it found.
+  /// it, and stores the two minutes it found: when the credits roll, and
+  /// when the credits scene plays (or the "no scene" sentinel — see
+  /// [Film.creditSceneStartMin]).
+  ///
+  /// [creditSceneStartMin] must be non-null here even when the film has
+  /// no scene, because null in that column means "never asked" and would
+  /// send this same film back to Gemini on the next open.
   ///
   /// `breaks_checked_at` is set here rather than by the caller, because
   /// stamping it is what makes the cache a cache: a non-null timestamp
@@ -367,9 +373,10 @@ class Database {
   ///
   /// Written to `films` directly — there is no separate `movies` table
   /// any more, so each chain's listing of a title stamps its own row.
-  Future<void> markBreaksChecked(int movieId, int? creditsStartMin) async {
+  Future<void> markBreaksChecked(int movieId, int? creditsStartMin, int? creditSceneStartMin) async {
     await supabase.from("films").update({
       "credits_start_min": creditsStartMin,
+      "credit_scene_start_min": creditSceneStartMin,
       "breaks_checked_at": DateTime.now().toUtc().toIso8601String(),
     }).eq("film_id", movieId);
   }

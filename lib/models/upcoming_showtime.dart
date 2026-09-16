@@ -10,6 +10,7 @@ class UpcomingShowtime {
     required this.filmTitle,
     required this.posterUrl,
     required this.cinemaName,
+    required this.branchId,
     required this.branchName,
     required this.screenType,
     required this.time,
@@ -24,6 +25,7 @@ class UpcomingShowtime {
       filmTitle: film?["title"] ?? "Untitled",
       posterUrl: film?["poster_url"],
       cinemaName: branch?["cinema_name"] ?? "",
+      branchId: branch?["branch_id"] as int?,
       branchName: branch?["branch_name"] ?? "",
       screenType: json["screen_type"] ?? "",
       time: DateTime.parse(json["show_time"]).toLocal(),
@@ -37,6 +39,13 @@ class UpcomingShowtime {
   final String filmTitle;
   final String? posterUrl;
   final String cinemaName;
+
+  /// Points at [Branch.id] — what a tap on this row uses to preselect
+  /// the exact branch this showing is at, not just its chain. Null only
+  /// if the `branches` join came back empty, in which case the Schedule
+  /// Card falls back to an unset branch dropdown.
+  final int? branchId;
+
   final String branchName;
   final String screenType;
   final DateTime time;

@@ -51,11 +51,20 @@ class GeminiFailure implements Exception {
 class BreaksAnswer {
   const BreaksAnswer({
     required this.creditsStartMin,
+    required this.creditSceneStartMin,
     required this.breaks,
     this.isEstimate = false,
   });
 
+  /// When the end credits begin, or null if Gemini gave nothing usable.
   final int? creditsStartMin;
+
+  /// When the mid/post-credits scene plays. Carries the same three-state
+  /// meaning [Film.creditSceneStartMin] documents — and is never null
+  /// coming out of [GeminiApi.readAnswer], since having asked at all is
+  /// what separates "no scene" (the sentinel) from "not asked" (null).
+  final int? creditSceneStartMin;
+
   final List<FilmBreak> breaks;
 
   /// True when Gemini said it reasoned from the film's runtime and
@@ -288,6 +297,7 @@ class GeminiApi {
         "\n"
         "{\"estimated\": <true or false>, \"has_credits_scene\": <true or false>, "
         "\"credits_start_min\": <integer or null>, "
+        "\"credit_scene_start_min\": <integer or null>, "
         "\"breaks\": [{\"start_min\": <integer>, \"end_min\": <integer>, "
         "\"scene\": <string or null>}]}\n"
         "\n"
@@ -300,9 +310,14 @@ class GeminiApi {
         "what you do know: a franchise that reliably has them (Marvel, for "
         "example) is true; a standalone drama with no such history is false.\n"
         "- \"credits_start_min\" is the minute the end credits begin. Give it "
-        "whenever \"has_credits_scene\" is true — your best estimate is fine. "
-        "When \"has_credits_scene\" is false, set it to null. It must be less "
-        "than $durationMin.\n"
+        "for EVERY film, whether or not it has a credits scene — your best "
+        "estimate is fine. It must be less than $durationMin.\n"
+        "- \"credit_scene_start_min\" is the minute that extra scene actually "
+        "plays. Give it only when \"has_credits_scene\" is true, otherwise set "
+        "it to null. It must be greater than or equal to "
+        "\"credits_start_min\" and less than $durationMin. A mid-credits "
+        "scene sits shortly after the credits begin; a post-credits scene "
+        "sits at the very end.\n"
         "- Each break is a stretch where nothing plot-critical happens: no "
         "dialogue that matters later, no reveal, no major action beat.\n"
         "- Breaks must be at least $minBreakMinutes minutes long, must not "
@@ -336,8 +351,19 @@ class GeminiApi {
     int start = answer.indexOf("{");
     int end = answer.lastIndexOf("}");
 
+    // An unreadable reply knows nothing about the credits (null) and
+    // records no scene (the durationMin sentinel) — the same outcome as
+    // "asked, found nothing". It still leaves `breaks` empty, so
+    // SupabaseRepository._reAskEmptyAfter brings the film back round in a
+    // week rather than letting one bad reply stick permanently.
+    final unreadable = BreaksAnswer(
+      creditsStartMin: null,
+      creditSceneStartMin: durationMin,
+      breaks: const [],
+    );
+
     if (start == -1 || end == -1) {
-      return BreaksAnswer(creditsStartMin: durationMin, breaks: const []);
+      return unreadable;
     }
 
     dynamic jsonBody;
@@ -345,7 +371,7 @@ class GeminiApi {
       jsonBody = jsonDecode(answer.substring(start, end + 1));
     } catch (e) {
       // A reply we cannot read is the same outcome as "nothing found".
-      return BreaksAnswer(creditsStartMin: durationMin, breaks: const []);
+      return unreadable;
     }
 
     // "Known" has to be claimed AND backed. The model's own
@@ -367,20 +393,37 @@ class GeminiApi {
         });
     final isEstimate = jsonBody["estimated"] != false || !everyBreakNamesAScene;
 
+    // The credits minute is now taken at face value for every film, and
+    // means only what it says: when the credits roll. It used to be
+    // overloaded to carry "has a credits scene" as well — a real minute
+    // meant yes, the runtime meant no — which threw the honest credits
+    // time away for every film without a scene. `credit_scene_start_min`
+    // carries that answer now, so this no longer has to.
+    final creditsStart = readCredits(jsonBody["credits_start_min"], durationMin);
+
+    // Keys on `has_credits_scene`, deliberately NOT on `estimated`. An
+    // earlier version treated every estimated answer as "no credits
+    // scene", which wiped Spider-Man's — an unreleased film is
+    // estimated, but a Marvel film still has one.
+    //
+    // durationMin is the "asked, no scene" sentinel (see
+    // Film.creditSceneStartMin): storing it is what stops this film
+    // being re-asked forever on a column that is legitimately empty.
+    // When the model claims a scene but gives no usable minute for it,
+    // fall back to the credits minute — "stay through the credits" is
+    // still the right instruction, just less precise — and only failing
+    // that give up and record no scene.
+    final int creditSceneStart;
+    if (jsonBody["has_credits_scene"] == true) {
+      creditSceneStart =
+          readCredits(jsonBody["credit_scene_start_min"], durationMin) ?? creditsStart ?? durationMin;
+    } else {
+      creditSceneStart = durationMin;
+    }
+
     return BreaksAnswer(
-      // The credits span only means something when there's a scene in
-      // or after the credits — that's what tells a person to stay put.
-      // So credits start before the end ONLY when the model says the
-      // film has a credits scene; otherwise they're pinned to the
-      // runtime and no span is drawn.
-      //
-      // This keys on `has_credits_scene`, deliberately NOT on
-      // `estimated`. An earlier version treated every estimated answer
-      // as "no credits scene", which wiped Spider-Man's — an unreleased
-      // film is estimated, but a Marvel film still has one.
-      creditsStartMin: jsonBody["has_credits_scene"] == true
-          ? readCredits(jsonBody["credits_start_min"], durationMin) ?? durationMin
-          : durationMin,
+      creditsStartMin: creditsStart,
+      creditSceneStartMin: creditSceneStart,
       breaks: readBreaks(jsonBody["breaks"], durationMin, isEstimate: isEstimate),
       isEstimate: isEstimate,
     );
