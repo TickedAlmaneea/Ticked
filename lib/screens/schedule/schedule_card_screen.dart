@@ -298,12 +298,46 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
     return Schedule(branch: branch, film: film, ticketTime: _ticketTime, adMinutes: ad, breaks: _breaks);
   }
 
+  /// Real time elapsed since Start was pressed, sped up by demo speed
+  /// when it's on. This is the *pace* of the simulated clock used below,
+  /// not the elapsed time into the schedule -- see [_elapsedSeconds].
   Duration get _elapsedRealDuration =>
       _liveStartedAt == null ? Duration.zero : DateTime.now().difference(_liveStartedAt!);
 
+  /// Seconds from [Schedule.ticketTime] to the (demo-speed accelerated)
+  /// simulated clock -- negative while still waiting for the ticket's
+  /// real start time to arrive, e.g. logging a 5:55 ticket at 5:50 reads
+  /// -300 here. [LiveActivityService] uses the sign of this to decide
+  /// whether to freeze the lock screen countdown instead of guessing
+  /// from a clamped value, so it -- not [_elapsedSeconds] below -- is
+  /// what gets passed to it.
+  int get _rawElapsedSeconds {
+    final schedule = _schedule;
+    final start = _liveStartedAt;
+    if (start == null || schedule == null) return 0;
+    final sincePress = _elapsedRealDuration.inSeconds;
+    final scaledSincePress = _demoSpeedEnabled ? sincePress * _demoSpeedMultiplier : sincePress;
+    final simulatedNow = start.add(Duration(seconds: scaledSincePress));
+    return simulatedNow.difference(schedule.ticketTime).inSeconds;
+  }
+
+  /// Floor division, not `~/`'s truncation-toward-zero: -45 seconds (45s
+  /// before showtime) must read as -1 minute, not 0. [_stateFor] in
+  /// LiveActivityService decides "has the real start time arrived yet?"
+  /// purely from the sign of this value, so rounding -45s up to 0 would
+  /// flip the widget out of its frozen pre-show phase up to 59 seconds
+  /// early -- which is exactly what was happening with `~/`.
+  int get _rawElapsedMinutes {
+    final seconds = _rawElapsedSeconds;
+    return seconds >= 0 ? seconds ~/ 60 : -((-seconds + 59) ~/ 60);
+  }
+
+  /// Nothing about the in-app timeline may move before the ticket's real
+  /// start time arrives either -- the playhead and "TIME REMAINING" stay
+  /// frozen at the very start until then, matching the lock screen.
   int get _elapsedSeconds {
-    final real = _elapsedRealDuration.inSeconds;
-    return _demoSpeedEnabled ? real * _demoSpeedMultiplier : real;
+    final raw = _rawElapsedSeconds;
+    return raw < 0 ? 0 : raw;
   }
 
   int get _elapsedMinutes => _elapsedSeconds ~/ 60;
@@ -316,11 +350,11 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
       _liveStartedAt = DateTime.now();
       _phase = _Phase.live;
     });
-    unawaited(LiveActivityService.instance.start(schedule));
+    unawaited(LiveActivityService.instance.start(schedule, _rawElapsedMinutes));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {});
-      unawaited(LiveActivityService.instance.onTick(schedule, _elapsedMinutes));
+      unawaited(LiveActivityService.instance.onTick(schedule, _rawElapsedMinutes));
       if (_elapsedMinutes >= schedule.totalMinutes) _endSession();
     });
   }

@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:live_activities/live_activities.dart';
 
 import '../models/schedule.dart';
+import '../utils/date_format.dart';
 
 /// Drives the iOS Lock Screen / Dynamic Island Live Activity that mirrors
 /// the Schedule Card's live countdown: "ads playing, true start in X",
@@ -20,12 +21,14 @@ import '../models/schedule.dart';
 /// session itself breaks. Android has no equivalent API — this
 /// intentionally does nothing there rather than fake one.
 ///
-/// The on-screen countdown number itself is drawn natively by the
-/// widget extension's own `Text(timerInterval:)`, which ticks on its
-/// own without Dart pushing an update every second — so [onTick] below
-/// only actually talks to the platform when the *phase* changes (ad
-/// block ends, a break starts or ends), not on every 1-second tick of
-/// the Schedule Card's own timer.
+/// The on-screen countdown is a plain, Dart-formatted string, pushed
+/// fresh every second while the session is live -- not iOS's own
+/// `Text(timerInterval:)`, which proved unreliable in this project (the
+/// countdown, and everything laid out near it, kept rendering blank on
+/// device no matter how the surrounding view was structured). Once the
+/// pre-show wait is over, [onTick] pushes an update every single tick of
+/// the Schedule Card's own timer, not just on a phase change, since the
+/// countdown text itself changes every second.
 class LiveActivityService {
   LiveActivityService._();
 
@@ -54,16 +57,30 @@ class LiveActivityService {
   }
 
   /// Starts the Live Activity for a screening that just went live.
-  Future<void> start(Schedule schedule) async {
+  ///
+  /// [elapsedMinutes] is the real gap between now and [Schedule.ticketTime]
+  /// (negative when Start is pressed ahead of the showtime, e.g. logging a
+  /// 9pm ticket at 7pm) -- not always 0. Hard-coding 0 here would open the
+  /// activity mid-way into the wrong phase whenever a ticket is logged
+  /// after its ads would already have ended.
+  Future<void> start(Schedule schedule, [int elapsedMinutes = 0]) async {
     if (!Platform.isIOS) return;
     _phaseKey = null;
     _posterPath = await _cachePosterIfNeeded(schedule.film.posterUrl);
     try {
-      final activityId = 'ticked_${DateTime.now().microsecondsSinceEpoch}';
-      final state = _stateFor(schedule, 0);
-      final created = await _plugin.createActivity(activityId, state);
+      // `_plugin.createActivity`'s first argument is only a client-side
+      // request label -- the value it *returns* is iOS's own real
+      // activity id, generated inside ActivityKit. Every later
+      // updateActivity/endActivity call has to use that real id, or the
+      // native side can't find the activity ("Activity not found") and
+      // silently never applies the update -- which is exactly why the
+      // widget was stuck on its initial frozen text no matter what
+      // onTick computed afterwards.
+      final requestLabel = 'ticked_${DateTime.now().microsecondsSinceEpoch}';
+      final state = _stateFor(schedule, elapsedMinutes);
+      final created = await _plugin.createActivity(requestLabel, state);
       print('LiveActivity createActivity result: $created');
-      _activityId = created != null ? activityId : null;
+      _activityId = created;
       _phaseKey = state['phase'] as String;
     } catch (e) {
       print('LiveActivity start ERROR: $e');
@@ -113,22 +130,26 @@ class LiveActivityService {
     }
   }
 
-  /// Called from the Schedule Card's existing 1-second ticker. Cheap to
-  /// call every second — it only pushes an update when the phase label
-  /// actually changed since the last tick.
+  /// Called from the Schedule Card's existing 1-second ticker. While
+  /// still frozen in the pre-show wait, nothing needs to move so this
+  /// only pushes on an actual phase change (matches the old behavior);
+  /// once live, the countdown text changes every second and is pushed
+  /// every tick to stay accurate.
   Future<void> onTick(Schedule schedule, int elapsedMinutes) async {
     final id = _activityId;
     if (id == null || !Platform.isIOS) return;
 
     final state = _stateFor(schedule, elapsedMinutes);
-    if (state['phase'] == _phaseKey) return;
+    final phaseChanged = state['phase'] != _phaseKey;
+    if (!phaseChanged && elapsedMinutes < 0) return;
     _phaseKey = state['phase'] as String;
 
     try {
       await _plugin.updateActivity(id, state);
-    } catch (_) {
-      // Best-effort — a failed update just means a stale phase label
-      // until the next transition tries again.
+    } catch (e) {
+      // Best-effort — a failed update just means a stale countdown until
+      // the next tick tries again.
+      print('LiveActivity updateActivity ERROR: $e');
     }
   }
 
@@ -146,6 +167,43 @@ class LiveActivityService {
     } catch (_) {}
   }
 
+  /// The evening laid out as a sequence of moments -- ads start, true
+  /// start, each researched safe break, credits and a credit scene (only
+  /// when the film actually has them), and finally the movie ending --
+  /// for the widget's beat rail. Flat "LABEL@isoDate|LABEL@isoDate|..."
+  /// text, same reasoning as the rest of this file's UserDefaults bridge:
+  /// the plugin only reliably carries scalar strings across, not nested
+  /// data.
+  String _beatsFor(Schedule schedule) {
+    final adMinutes = schedule.adMinutes;
+    final breaks = schedule.breaks.toList()..sort((a, b) => a.startMin.compareTo(b.startMin));
+
+    final entries = <MapEntry<String, int>>[
+      const MapEntry('ADS', 0),
+      MapEntry('TRUE START', adMinutes),
+      for (var i = 0; i < breaks.length; i++)
+        MapEntry(breaks.length > 1 ? 'BREAK ${i + 1}' : 'BREAK', adMinutes + breaks[i].startMin),
+    ];
+
+    final creditsStart = schedule.film.creditsStartMin;
+    if (creditsStart != null && creditsStart < schedule.film.durationMin) {
+      entries.add(MapEntry('CREDITS', adMinutes + creditsStart));
+    }
+    if (schedule.film.hasCreditScene) {
+      entries.add(MapEntry('SCENE', adMinutes + schedule.film.creditSceneStartMin!));
+    }
+    entries.add(MapEntry('ENDS', schedule.totalMinutes));
+
+    return entries.map((e) {
+      final date = schedule.ticketTime.add(Duration(minutes: e.value));
+      final iso = DateTime.fromMillisecondsSinceEpoch(
+        date.toUtc().millisecondsSinceEpoch,
+        isUtc: true,
+      ).toIso8601String();
+      return '${e.key}@$iso';
+    }).join('|');
+  }
+
   Map<String, dynamic> _stateFor(Schedule schedule, int elapsedMinutes) {
     final nextBreak = schedule.nextBreakAfter(elapsedMinutes);
     final trueStart = schedule.trueStartTime;
@@ -155,7 +213,11 @@ class LiveActivityService {
     late final String label;
     late final DateTime targetDate;
 
-    if (elapsedMinutes < schedule.adMinutes) {
+    if (elapsedMinutes < 0) {
+      phase = 'preShow';
+      label = 'STARTS AT';
+      targetDate = trueStart;
+    } else if (elapsedMinutes < schedule.adMinutes) {
       phase = 'ads';
       label = 'TRUE START IN';
       targetDate = trueStart;
@@ -173,16 +235,27 @@ class LiveActivityService {
       targetDate = trueEnd;
     }
 
+    // Plain text the widget just displays as-is -- no native timer
+    // machinery involved. Before the real start time, it's the frozen
+    // clock time ("5:55 PM"); from then on, it's a live "H:MM:SS" (or
+    // "MM:SS") count down to whatever this phase's targetDate is,
+    // recomputed fresh on every push.
+    final String countdownText;
+    if (elapsedMinutes < 0) {
+      countdownText = formatClock(schedule.ticketTime);
+    } else {
+      final remaining = targetDate.difference(DateTime.now());
+      countdownText = formatCountdown(remaining.isNegative ? Duration.zero : remaining);
+    }
+
     return {
       'filmTitle': schedule.film.title,
       'cinemaLabel': '${schedule.branch.cinemaName} · ${schedule.branch.branchName}',
       'phase': phase,
       'label': label,
       'posterPath': _posterPath ?? '',
-      'targetDate': DateTime.fromMillisecondsSinceEpoch(
-  targetDate.toUtc().millisecondsSinceEpoch,
-  isUtc: true,
-).toIso8601String(),
+      'countdownText': countdownText,
+      'beats': _beatsFor(schedule),
     };
   }
 }
