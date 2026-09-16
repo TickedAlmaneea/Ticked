@@ -255,29 +255,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(0, 20, 0, 40),
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        'ADMIT ONE',
-                        style: AppTypography.mono(size: 10, weight: FontWeight.w500, letterSpacing: 2.2),
-                      ),
-                      Text(
-                        'No ${_memberNumber(user?.id)}',
-                        style: AppTypography.mono(
-                          size: 10,
-                          weight: FontWeight.w500,
-                          letterSpacing: 1.4,
-                          color: AppColors.gold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // The "ADMIT ONE" / "No 4007" stub line used to sit here.
+                // The text is gone but its height is kept deliberately:
+                // the gap is what lets the card below read as a ticket
+                // torn from a strip rather than as a panel jammed against
+                // the top of the screen.
+                //
+                // 10 is the line box of the mono style that was here
+                // (size 10 at height 1.0), so the layout below it has not
+                // moved by a pixel.
+                const SizedBox(height: 10),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -421,20 +408,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-}
-
-/// A stable-looking 4-digit "membership number" derived from the account
-/// id — not a real serial, just something that reads as one and does not
-/// change between app launches for the same person. `String.hashCode` is
-/// documented as unspecified across VM runs, so this walks the id's own
-/// characters instead of trusting that.
-String _memberNumber(String? id) {
-  if (id == null || id.isEmpty) return '0000';
-  var hash = 0;
-  for (final unit in id.codeUnits) {
-    hash = (hash * 31 + unit) & 0x7fffffff;
-  }
-  return (hash % 10000).toString().padLeft(4, '0');
 }
 
 /// The cut between the identity band and the recap band: two `bg`-coloured
