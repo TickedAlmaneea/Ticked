@@ -144,9 +144,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 22),
                 _UploadTicketCard(onTap: _openUploadTicket),
-                const SizedBox(height: 34),
+                const SizedBox(height: 26),
                 const SectionHeader(label: 'NOW SHOWING'),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 _NowShowingSection(nowShowingFuture: _nowShowing, onOpenFilm: _openFilm),
                 const SizedBox(height: 34),
                 const SectionHeader(label: 'STARTING SOON'),
@@ -251,7 +251,7 @@ class _NowShowingSection extends StatelessWidget {
   /// What the loading and empty states stand in at — the poster strip
   /// plus its caption and dots, so the page doesn't reflow when the
   /// carousel replaces them.
-  static const double _placeholderHeight = 420;
+  static const double _placeholderHeight = 310;
 
   /// Since each chain caches its own copy of a film (there is no
   /// shared `movies` table any more — see film.dart's own doc comment),

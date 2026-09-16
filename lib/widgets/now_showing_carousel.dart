@@ -42,7 +42,13 @@ class _NowShowingCarouselState extends State<NowShowingCarousel> {
   /// "wants": at 348 the strip alone filled the rest of the screen, so
   /// the title under it and everything below — Starting Soon included —
   /// sat past the fold on a phone.
-  static const double _stripHeight = 300;
+  ///
+  /// 240 is set by the shortest screen we care about rather than by what
+  /// looks best in isolation. On a 667pt iPhone SE the greeting, the
+  /// "Got a ticket?" card and this section have to share one viewport;
+  /// at 300 the card was being pushed off the top before the carousel
+  /// was fully visible, which put the primary action out of sight.
+  static const double _stripHeight = 240;
 
   /// Posters are 2:3. Rather than pick a viewport fraction by eye and let
   /// BoxFit.cover crop whatever doesn't fit, the card's width is derived
@@ -106,9 +112,9 @@ class _NowShowingCarouselState extends State<NowShowingCarousel> {
             },
           ),
         ),
-        const SizedBox(height: 18),
-        _CentredCaption(film: current),
         const SizedBox(height: 14),
+        _CentredCaption(film: current),
+        const SizedBox(height: 10),
         _Dots(count: films.length, index: _index),
       ],
     );
