@@ -156,4 +156,25 @@ abstract final class AppTypography {
     letterSpacing: 1.4,
     color: AppColors.textTertiary,
   );
+
+  /// A Manrope caption, label or button label at an arbitrary size —
+  /// mirrors [mono] and [display] for the one family that didn't yet
+  /// have an escape hatch. The About Us screen's timing-card labels
+  /// (9.5px) and LinkedIn pill (10px) need sizes none of the named
+  /// styles above cover.
+  static TextStyle manropeStyle({
+    required double size,
+    FontWeight weight = FontWeight.w400,
+    double letterSpacing = 0,
+    Color color = AppColors.textSecondary,
+    double height = 1.4,
+  }) {
+    return GoogleFonts.manrope(
+      fontSize: size,
+      fontWeight: weight,
+      letterSpacing: letterSpacing,
+      color: color,
+      height: height,
+    );
+  }
 }
