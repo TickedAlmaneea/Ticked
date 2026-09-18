@@ -41,22 +41,15 @@ class Database {
 
   // ---- Auth -------------------------------------------------------------
 
-  /// Registers and signs in, in one step. Email confirmation is off in
-  /// the Supabase project, so `signUp` returns a live session and the
-  /// new user goes straight into the app — there is no "check your
-  /// inbox" step any more.
+  /// Registers, and stops there. Email confirmation is ON in the
+  /// Supabase project, so `signUp` creates the user but returns no
+  /// session: nothing in the app is reachable until
+  /// [verifySignUpCode] trades the emailed code for one.
   ///
   /// The `profiles` row is created by the `on_auth_user_created`
-  /// trigger from the [displayName] passed here, so it exists by the
-  /// time [getProfile] is called.
-  ///
-  /// Throws when the address is already registered. That is a real
-  /// change of behaviour from confirmation-on, where Supabase
-  /// deliberately answered as if sign-up had worked so a stranger could
-  /// not use the form to discover who has an account. Without
-  /// confirmation that disclosure is unavoidable: a session either
-  /// comes back or it doesn't.
-  Future<AppUser> signUp(String email, String password, String displayName) async {
+  /// trigger from the [displayName] passed here, so it already exists
+  /// by the time the code is verified and [getProfile] is called.
+  Future<void> signUp(String email, String password, String displayName) async {
     AuthResponse response;
 
     try {
@@ -71,17 +64,51 @@ class Database {
 
     final user = response.user;
 
-    // No user back from a project that should hand one straight over —
-    // almost always confirmation still switched on in the dashboard.
     // Raised outside the catch above so it isn't rewritten into
     // readableAuthError's generic network message.
     if (user == null) {
-      throw Exception(
-        "Account created, but this project still requires email confirmation. "
-        "Check your inbox, or turn confirmation off in Supabase.",
-      );
+      throw Exception("Sign-up didn't complete. Try again.");
     }
-    return getProfile(user.id);
+
+    // With confirmation on, Supabase answers an address that is already
+    // registered and confirmed with a user carrying an empty identity
+    // list rather than an error — deliberately, so the form can't be
+    // used to discover who has an account. Telling the person beats
+    // parking them on a code screen for an email that will never
+    // arrive; delete this to keep that disclosure shut instead.
+    if (user.identities?.isEmpty ?? false) {
+      throw Exception("An account with that email already exists.");
+    }
+  }
+
+  /// Trades the emailed sign-up code for a real session, which is what
+  /// marks the address confirmed.
+  ///
+  /// Relies on the dashboard's "Confirm signup" email template printing
+  /// `{{ .Token }}` — the stock template only has a link, same as the
+  /// reset one.
+  Future<AppUser> verifySignUpCode(String email, String code) async {
+    try {
+      final response = await supabase.auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.signup,
+      );
+
+      return await getProfile(response.user!.id);
+    } catch (error) {
+      throw readableAuthError(error);
+    }
+  }
+
+  /// Sends the confirmation code again. Only valid while the account
+  /// exists and is still unconfirmed.
+  Future<void> resendSignUpCode(String email) async {
+    try {
+      await supabase.auth.resend(type: OtpType.signup, email: email);
+    } catch (error) {
+      throw readableAuthError(error);
+    }
   }
 
   Future<AppUser> signIn(String email, String password) async {
@@ -99,6 +126,46 @@ class Database {
 
   Future<void> signOut() async {
     await supabase.auth.signOut();
+  }
+
+  /// Deletes the account for good: the `movies_seen` history, the
+  /// `profiles` row, and the `auth.users` row itself.
+  ///
+  /// Goes through the `delete_own_account` SQL function rather than
+  /// deleting from here, because removing an auth user needs privileges
+  /// the app's publishable key deliberately doesn't have. That function
+  /// reads `auth.uid()` itself and takes no arguments, so it can only
+  /// ever delete the caller — see scripts/add_delete_account_function.sql,
+  /// which has to be run once on the project before this works.
+  Future<void> deleteAccount() async {
+    try {
+      await supabase.rpc("delete_own_account");
+    } on PostgrestException catch (error) {
+      // PGRST202: PostgREST has no such function in its schema cache, so
+      // the call never reached Postgres — which is why this isn't
+      // Postgres's own 42883 undefined_function. Either the SQL hasn't
+      // been run on this project, or it has and the cache is stale.
+      if (error.code == "PGRST202") {
+        throw Exception(
+          "Account deletion isn't set up on this project yet — run "
+          "scripts/add_delete_account_function.sql.",
+        );
+      }
+      // Anything else carries the reason Postgres gave, verbatim. A
+      // generic "try again" here is untrue — retrying a permission
+      // error or a missing column fails identically every time — and it
+      // hides the one detail that says what to fix.
+      throw Exception("Couldn't delete your account: ${error.message} (${error.code})");
+    } catch (error) {
+      throw Exception("Network error — check your connection and try again.");
+    }
+
+    // The account is already gone at this point, so a failure to sign
+    // out cleanly (the server has no user to log out any more) is not
+    // worth surfacing — the local session still has to be cleared.
+    try {
+      await signOut();
+    } catch (_) {}
   }
 
   /// Emails a one-time reset code — not a link.
@@ -153,12 +220,10 @@ class Database {
     switch (error.code) {
       case "invalid_credentials":
         return Exception("Incorrect email or password.");
-      // Confirmation is off, so this should never fire. Kept because an
-      // account made before it was switched off is still unconfirmed,
-      // and that user needs to be told why they can't get in rather
-      // than shown Supabase's raw message.
+      // Fires when someone abandons the code screen and later tries to
+      // sign in — the account exists, the address was never confirmed.
       case "email_not_confirmed":
-        return Exception("Confirm your email first — check your inbox for the link.");
+        return Exception("Confirm your email first — check your inbox for the code.");
       case "user_already_exists":
       case "email_exists":
         return Exception("An account with that email already exists.");

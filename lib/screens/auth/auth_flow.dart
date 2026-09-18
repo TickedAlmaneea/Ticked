@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../../services/database.dart';
 import '../main_shell.dart';
 import 'auth_switch_route.dart';
+import 'confirm_email_screen.dart';
 import 'forgot_password_screen.dart';
 import 'set_new_password_screen.dart';
 import 'sign_in_screen.dart';
 import 'sign_up_screen.dart';
 
-/// Wires Sign In <-> Sign Up <-> Forgot Password
+/// Wires Sign In <-> Sign Up <-> Confirm Email <-> Forgot Password
 /// together, backed by the real [Database].
 ///
 /// The screens below are unchanged and know nothing about Supabase:
@@ -39,10 +40,11 @@ class AuthFlow extends StatelessWidget {
         AuthSwitchRoute(
           builder: (signUpContext) => SignUpScreen(
             onRegister: (name, email, password) async {
-              // Confirmation is off, so signing up returns a live
-              // session — straight into the app, same as signing in.
+              // Confirmation is on, so signing up leaves the account
+              // unconfirmed and hands back no session — the code screen
+              // is the only way forward from here.
               await database.signUp(email, password, name);
-              if (signUpContext.mounted) _goToMainShell(signUpContext);
+              if (signUpContext.mounted) _goToConfirmEmail(signUpContext, database, email);
             },
             onSignIn: () => Navigator.of(signUpContext).pop(),
           ),
@@ -61,6 +63,41 @@ class AuthFlow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Replaces the whole stack, so there is nothing behind the code
+  /// screen to swipe or pop back to — an unconfirmed account has no
+  /// screen it could sensibly return to.
+  void _goToConfirmEmail(BuildContext context, Database database, String email) {
+    final navigator = Navigator.of(context);
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => ConfirmEmailScreen(
+          email: email,
+          onVerifyCode: (code) async {
+            // A correct code confirms the address and returns a real
+            // session — the first moment the app proper is reachable.
+            await database.verifySignUpCode(email, code);
+            navigator.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainShell()),
+              (route) => false,
+            );
+          },
+          onResendCode: () => database.resendSignUpCode(email),
+          onUseAnother: () async {
+            // Nothing to sign out of in practice — confirmation-on
+            // sign-up never made a session — but clear it anyway so a
+            // future change to that behaviour can't leak one through.
+            await database.signOut();
+            navigator.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const AuthFlow()),
+              (route) => false,
+            );
+          },
+        ),
+      ),
+      (route) => false,
     );
   }
 

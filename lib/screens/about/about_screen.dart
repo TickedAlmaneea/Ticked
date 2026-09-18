@@ -57,17 +57,15 @@ class AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      'Every cinema ticket states a time that is not the time the film begins. '
-                      'Ticked tells you the real start time, the real end time, and when it\'s safe '
-                      'to leave your seat — using ad-block timings researched directly at each '
-                      'cinema chain in Riyadh.',
+                      'Every cinema ticket states a time that isn\'t when the film begins. '
+                      'Ticked tells you the real start time, the real end time, and when '
+                      'it\'s safe to leave your seat.',
                       style: AppTypography.manropeStyle(size: 14.5, height: 1.6, color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'The ad block is researched by the team, not learned from users — it doesn\'t '
-                      'get more accurate with use. Safe breaks are AI-generated on first request and '
-                      'cached forever after, so only the first person to watch a film pays the cost.',
+                      'Ad-block timings are researched by the team at each cinema chain in '
+                      'Riyadh — measured, not crowdsourced.',
                       style: AppTypography.manropeStyle(size: 14.5, height: 1.6, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 30),

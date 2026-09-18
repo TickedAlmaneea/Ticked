@@ -256,15 +256,42 @@ class _ParsingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bg.withOpacity(0.72),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2.6),
-          const SizedBox(height: 14),
-          Text('Reading your ticket…', style: AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary)),
-        ],
+    // A pool of shade under the spinner rather than a tint over the whole
+    // photo: darkest at the centre, gone by the edges, so the ticket stays
+    // readable while the label still has something to sit on.
+    //
+    // SizedBox.expand because AnimatedSwitcher hands its child loose
+    // constraints — a bare DecoratedBox would shrink to the text's width
+    // and print the gradient as a band down the middle of the photo.
+    return SizedBox.expand(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            radius: 0.6,
+            colors: [
+              AppColors.bg.withValues(alpha: 0.78),
+              AppColors.bg.withValues(alpha: 0.45),
+              AppColors.bg.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.45, 1],
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2.6),
+            const SizedBox(height: 14),
+            Text(
+              'Reading your ticket…',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+                // Keeps the label legible where the gradient has already
+                // faded out over a bright ticket.
+                shadows: const [Shadow(color: Colors.black, blurRadius: 10)],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

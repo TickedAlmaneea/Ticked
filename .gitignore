@@ -53,3 +53,15 @@ app.*.map.json
 scripts/vox_movies.json
 scripts/vox_sync.log
 scripts/vox_scraper.log
+
+# Flutter run logs
+flutter_log.txt
+
+# Scraper generated/local files (vox_* above; these are the same class)
+scripts/reel_movies.json
+scripts/cinehouse_movies.json
+scripts/*_sync.log
+scripts/.env
+
+# Personal notes, kept outside the repo
+Ticked_Proposal_Final.md
