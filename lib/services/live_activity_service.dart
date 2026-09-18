@@ -78,7 +78,17 @@ class LiveActivityService {
       // onTick computed afterwards.
       final requestLabel = 'ticked_${DateTime.now().microsecondsSinceEpoch}';
       final state = _stateFor(schedule, elapsedMinutes);
-      final created = await _plugin.createActivity(requestLabel, state);
+      // No aps-environment entitlement on this (free/personal team)
+      // signing setup -- and none is needed, since every update here
+      // comes from onTick() while the app runs, never a server push.
+      // Leaving iOSEnableRemoteUpdates at its default (true) makes
+      // ActivityKit request a push token anyway, which fails outright
+      // without that entitlement ("ActivityKit.ActivityInput error 0").
+      final created = await _plugin.createActivity(
+        requestLabel,
+        state,
+        iOSEnableRemoteUpdates: false,
+      );
       print('LiveActivity createActivity result: $created');
       _activityId = created;
       _phaseKey = state['phase'] as String;

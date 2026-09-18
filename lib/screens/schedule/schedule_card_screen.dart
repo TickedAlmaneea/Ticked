@@ -86,6 +86,15 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
   bool _demoSpeedEnabled = false;
   static const _demoSpeedMultiplier = 90;
 
+  /// Guards [_start] against firing twice from a fast double-tap (or the
+  /// button's touch-down/touch-up bouncing) while `recordAttendance` is
+  /// still in flight and the phase hasn't yet flipped away from showing
+  /// the Start button. Without this, two overlapping calls each create
+  /// their own Live Activity -- [LiveActivityService] only ever tracks
+  /// the last activity id, so the first one is silently orphaned on the
+  /// lock screen, never updated or ended again.
+  bool _starting = false;
+
   @override
   void initState() {
     super.initState();
@@ -344,19 +353,29 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
 
   Future<void> _start() async {
     final schedule = _schedule;
-    if (schedule == null) return;
-    await appRepository.recordAttendance(schedule);
-    setState(() {
-      _liveStartedAt = DateTime.now();
-      _phase = _Phase.live;
-    });
-    unawaited(LiveActivityService.instance.start(schedule, _rawElapsedMinutes));
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+    if (schedule == null || _starting) return;
+    _starting = true;
+    setState(() {});
+    try {
+      await appRepository.recordAttendance(schedule);
       if (!mounted) return;
-      setState(() {});
-      unawaited(LiveActivityService.instance.onTick(schedule, _rawElapsedMinutes));
-      if (_elapsedMinutes >= schedule.totalMinutes) _endSession();
-    });
+      setState(() {
+        _liveStartedAt = DateTime.now();
+        _phase = _Phase.live;
+      });
+      unawaited(LiveActivityService.instance.start(schedule, _rawElapsedMinutes));
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+        unawaited(LiveActivityService.instance.onTick(schedule, _rawElapsedMinutes));
+        if (_elapsedMinutes >= schedule.totalMinutes) _endSession();
+      });
+    } finally {
+      // Only relevant if we bailed out (e.g. recordAttendance threw)
+      // before the phase moved on and hid the Start button; once live,
+      // this flag no longer matters but is harmless to clear.
+      if (mounted) setState(() => _starting = false);
+    }
   }
 
   void _endSession() {
@@ -462,7 +481,11 @@ class _ScheduleCardScreenState extends State<ScheduleCardScreen> {
         const SizedBox(height: 28),
         if (schedule != null) _buildScheduleSummary(schedule) else _buildIncompleteHint(),
         const SizedBox(height: 28),
-        TickedPrimaryButton(label: 'Start', onPressed: schedule == null ? null : _start),
+        TickedPrimaryButton(
+          label: 'Start',
+          onPressed: schedule == null ? null : _start,
+          isLoading: _starting,
+        ),
         if (_film?.bookingUrl != null) ...[
           const SizedBox(height: 24),
           _BuyTicketLink(onOpen: _openBookingPage),
